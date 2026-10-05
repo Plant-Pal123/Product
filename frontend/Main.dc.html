@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PlantPal — advisor dashboard</title>
+<script src="./support.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body{margin:0;font-family:'Figtree',system-ui,sans-serif;}
+  a{color:#2F9E5C}a:hover{color:#227C46}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+  .btn{border:none;cursor:pointer;font-family:inherit}
+  .btn:focus-visible{outline:2px solid #2F9E5C;outline-offset:2px}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #FFFFFF; color: #191A17; display: flex; overflow: hidden;">
+
+  <!-- Icon rail -->
+  <div style="width: 72px; flex-shrink: 0; background: #262824; display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 6px;">
+    <div style="width: 36px; height: 36px; border-radius: 10px; background: #2F9E5C; display: flex; align-items: center; justify-content: center; color: #FFFFFF; font-weight: 700; font-size: 15px; margin-bottom: 18px;">P</div>
+    <sc-for list="{{ railIcons }}" as="item">
+      <div style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: {{ item.bg }};">
+        <span style="width: 18px; height: 18px; border: 1.6px solid {{ item.color }}; border-radius: {{ item.shape }};"></span>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- Paddock list -->
+  <div style="width: 264px; flex-shrink: 0; background: #F2F2EF; border-right: 1px solid #E5E4DF; display: flex; flex-direction: column;">
+    <div style="padding: 22px 20px 16px;">
+      <div style="font-size: 15px; font-weight: 700;">Season 2026/27</div>
+      <div style="font-size: 13px; color: #7C7F77; margin-top: 2px;">Kōwhai Downs · Hawke’s Bay</div>
+    </div>
+    <div style="margin: 0 20px 14px; padding: 10px 12px; background: #FFFFFF; border-radius: 10px; border: 1px solid #E5E4DF; font-size: 13px; color: #7C7F77;">Search paddock</div>
+    <div style="padding: 0 20px 8px; font-size: 12px; font-weight: 600; color: #7C7F77; text-transform: uppercase; letter-spacing: 0.02em;">Paddocks</div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 10px;">
+      <sc-for list="{{ paddocks }}" as="pad">
+        <button class="btn" onClick="{{ pad.select }}" style="display: flex; align-items: center; justify-content: space-between; text-align: left; padding: 10px 10px; border-radius: 10px; background: {{ pad.bg }};">
+          <div>
+            <div style="font-size: 14px; font-weight: 600;">{{ pad.name }}</div>
+            <div style="font-size: 12px; color: #7C7F77;">{{ pad.meta }}</div>
+          </div>
+          <sc-if value="{{ pad.top }}" hint-placeholder-val="{{ true }}">
+            <span style="font-size: 10px; font-weight: 700; background: #191A17; color: #FFFFFF; padding: 2px 7px; border-radius: 6px;">TOP</span>
+          </sc-if>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- Main stage -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0; background: #FFFFFF;">
+
+    <div style="padding: 26px 40px 0; flex-shrink: 0;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between;">
+        <div>
+          <div style="font-size: 24px; font-weight: 700;">Riverflat A</div>
+          <div style="font-size: 15px; color: #50534C; margin-top: 2px;">24.6 ha · silt loam · well drained</div>
+        </div>
+        <button class="btn" onClick="{{ startExport }}" style="padding: 12px 20px; background: {{ exportBg }}; color: #FFFFFF; border-radius: 10px; font-size: 14px; font-weight: 600;">{{ exportLabel }}</button>
+      </div>
+      <div style="display: flex; gap: 26px; margin-top: 22px; border-bottom: 1px solid #E5E4DF;">
+        <sc-for list="{{ tabs }}" as="t">
+          <div style="font-size: 15px; padding: 8px 0 12px; color: {{ t.color }}; font-weight: {{ t.weight }}; border-bottom: 2.5px solid {{ t.line }};">{{ t.label }}</div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; overflow: hidden; padding: 24px 40px 32px; display: flex; flex-direction: column; min-height: 0;">
+      <div style="margin-bottom: 16px;">
+        <span style="font-size: 15px; font-weight: 700;">Recommended crops</span>
+        <span style="font-size: 13px; color: #7C7F77; margin-left: 8px;">Grain and vegetable options, ranked for this paddock</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
+        <sc-for list="{{ crops }}" as="crop" hint-placeholder-count="5">
+          <div style="background: #F3F3F0; border-radius: 18px; padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 12px; border: 1.5px solid {{ crop.border }};">
+
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono" style="font-size: 12px; font-weight: 700; color: #50534C;">{{ crop.rank }}</span>
+              <sc-if value="{{ crop.isTop }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size: 10px; font-weight: 700; background: #191A17; color: #F3F3F0; padding: 2px 8px; border-radius: 6px;">TOP PICK</span>
+              </sc-if>
+            </div>
+
+            <div>
+              <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap;">
+                <span style="font-size: 16px; font-weight: 700;">{{ crop.name }}</span>
+                <sc-if value="{{ crop.showGmoBadge }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.02em; background: #E1F2E7; color: #11621A; padding: 2px 7px; border-radius: 6px;">GMO</span>
+                </sc-if>
+              </div>
+              <div style="font-size: 12.5px; color: #7C7F77; margin-top: 1px;">{{ crop.category }}</div>
+            </div>
+
+            <sc-if value="{{ crop.hasVariantToggle }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; background: #E8E8E3; border-radius: 9px; padding: 3px; gap: 2px;">
+                <button class="btn" onClick="{{ crop.pickGmo }}" style="flex-grow: 1; padding: 6px 0; border-radius: 7px; font-size: 12px; font-weight: 600; background: {{ crop.gmoBtnBg }}; color: {{ crop.gmoBtnText }};">GMO</button>
+                <button class="btn" onClick="{{ crop.pickNonGmo }}" style="flex-grow: 1; padding: 6px 0; border-radius: 7px; font-size: 12px; font-weight: 600; background: {{ crop.nonGmoBtnBg }}; color: {{ crop.nonGmoBtnText }};">Non-GMO</button>
+              </div>
+            </sc-if>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="font-size: 14px; font-weight: 600;">{{ crop.score }}</span>
+              <div style="flex-grow: 1; height: 6px; border-radius: 3px; background: #E8E8E3; overflow: hidden;">
+                <div style="height: 100%; border-radius: 3px; background: #191A17; width: {{ crop.scorePct }};"></div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 16px; padding-top: 10px; border-top: 1px solid #E5E4DF;">
+              <div style="flex: 1;">
+                <div style="font-size: 10.5px; color: #7C7F77;">Margin/ha</div>
+                <div class="mono" style="font-size: 14px; font-weight: 600;">{{ crop.margin }}</div>
+              </div>
+              <div style="flex: 1;">
+                <div style="font-size: 10.5px; color: #7C7F77;">Yield</div>
+                <div class="mono" style="font-size: 14px; font-weight: 600;">{{ crop.yield }}</div>
+              </div>
+              <div style="flex: 1;">
+                <div style="font-size: 10.5px; color: #7C7F77;">Cost</div>
+                <div class="mono" style="font-size: 14px; font-weight: 600;">{{ crop.cost }}</div>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2F9E5C","options":["#2F9E5C","#191A17","#50534C","#E1F2E7"]}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { variant: 'gmo', exporting: false };
+  }
+
+  pickGmo() { this.setState({ variant: 'gmo' }); }
+  pickNonGmo() { this.setState({ variant: 'nonGmo' }); }
+  startExport() {
+    this.setState({ exporting: true });
+    setTimeout(() => this.setState({ exporting: false }), 1400);
+  }
+
+  renderVals() {
+    const isGmo = this.state.variant === 'gmo';
+    const maize = isGmo
+      ? { name: 'Maize grain — GMO', margin: '$1,180', yield: '13.2 t/ha', cost: '$1,640' }
+      : { name: 'Maize grain — non-GMO', margin: '$980', yield: '12.1 t/ha', cost: '$1,540' };
+
+    const crops = [
+      {
+        rank: '01', name: maize.name, category: 'Grain', score: '92', scorePct: '92%', margin: maize.margin, yield: maize.yield, cost: maize.cost,
+        showGmoBadge: isGmo, hasVariantToggle: true, isTop: true, border: '#191A17',
+        pickGmo: () => this.pickGmo(), pickNonGmo: () => this.pickNonGmo(),
+        gmoBtnBg: isGmo ? '#191A17' : 'transparent', gmoBtnText: isGmo ? '#F3F3F0' : '#50534C',
+        nonGmoBtnBg: !isGmo ? '#191A17' : 'transparent', nonGmoBtnText: !isGmo ? '#F3F3F0' : '#50534C',
+      },
+      { rank: '02', name: 'Feed wheat', category: 'Grain', score: '87', scorePct: '87%', margin: '$860', yield: '9.8 t/ha', cost: '$1,120', showGmoBadge: false, hasVariantToggle: false, isTop: false, border: 'transparent' },
+      { rank: '03', name: 'Feed barley', category: 'Grain', score: '81', scorePct: '81%', margin: '$740', yield: '8.4 t/ha', cost: '$980', showGmoBadge: false, hasVariantToggle: false, isTop: false, border: 'transparent' },
+      { rank: '04', name: 'Process peas', category: 'Vegetable', score: '76', scorePct: '76%', margin: '$690', yield: '6.1 t/ha', cost: '$1,340', showGmoBadge: false, hasVariantToggle: false, isTop: false, border: 'transparent' },
+      { rank: '05', name: 'Buttercup squash', category: 'Vegetable', score: '68', scorePct: '68%', margin: '$610', yield: '32 t/ha', cost: '$2,180', showGmoBadge: false, hasVariantToggle: false, isTop: false, border: 'transparent' },
+    ];
+
+    return {
+      crops,
+      railIcons: [
+        { bg: '#2E312B', color: '#EDEEE9', shape: '4px' },
+        { bg: 'transparent', color: '#8E9189', shape: '50%' },
+        { bg: 'transparent', color: '#8E9189', shape: '4px' },
+        { bg: 'transparent', color: '#8E9189', shape: '2px' },
+      ],
+      paddocks: [
+        { name: 'Riverflat A', meta: '24.6 ha', top: true, bg: '#FFFFFF', select: () => {} },
+        { name: 'Riverflat B', meta: '19.1 ha', top: false, bg: 'transparent', select: () => {} },
+        { name: 'Terrace North', meta: '31.0 ha', top: false, bg: 'transparent', select: () => {} },
+        { name: 'Clay Flat', meta: '14.8 ha', top: false, bg: 'transparent', select: () => {} },
+      ],
+      tabs: [
+        { label: 'Recommendations', color: '#191A17', weight: '600', line: '#191A17' },
+        { label: 'Soil', color: '#7C7F77', weight: '400', line: 'transparent' },
+        { label: 'Climate', color: '#7C7F77', weight: '400', line: 'transparent' },
+        { label: 'Financials', color: '#7C7F77', weight: '400', line: 'transparent' },
+        { label: 'Plan', color: '#7C7F77', weight: '400', line: 'transparent' },
+        { label: 'Compare', color: '#7C7F77', weight: '400', line: 'transparent' },
+      ],
+      exportLabel: this.state.exporting ? 'Preparing PDF…' : 'Export summary as PDF',
+      exportBg: this.props.accent ?? '#2F9E5C',
+      startExport: () => this.startExport(),
+    };
+  }
+}
+</script>
+</x-dc>
+</body>
+</html>

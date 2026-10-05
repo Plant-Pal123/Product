@@ -1,0 +1,16 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-09-26T04:56:00Z" },
+  "title": "PlantPal",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 960, "title": "Advisor dashboard", "is_interactive": true },
+    "Summary.dc.html": { "x": 1520, "y": 0, "w": 816, "h": 1056, "title": "Exportable summary", "is_interactive": true }
+  },
+  "order": ["Main.dc.html", "Summary.dc.html"],
+  "notes": {
+    "n1": { "x": 0, "y": -150, "text": "PlantPal — advisor dashboard & one-page exportable summary", "kind": "title1", "maxW": 2336 }
+  },
+  "designSystems": []
+}

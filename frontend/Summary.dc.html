@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PlantPal — exportable summary</title>
+<script src="./support.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body{margin:0;font-family:'Figtree',system-ui,sans-serif;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+  .btn{border:none;cursor:pointer;font-family:inherit}
+  .btn:focus-visible{outline:2px solid #2F9E5C;outline-offset:2px}
+</style>
+</helmet>
+
+<div style="width: 816px; height: 1056px; box-sizing: border-box; background: #FFFFFF; color: #191A17; padding: 60px; display: flex; flex-direction: column; gap: 26px;">
+
+  <!-- Toolbar (screen only — not part of the printed page) -->
+  <div style="display: flex; align-items: center; justify-content: space-between;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 26px; height: 26px; border-radius: 8px; background: #2F9E5C; display: flex; align-items: center; justify-content: center; color: #FFFFFF; font-weight: 700; font-size: 12px;">P</div>
+      <span style="font-size: 17px; font-weight: 700;">PlantPal</span>
+      <span style="font-size: 13px; color: #7C7F77;">Summary</span>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <button class="btn" onClick="{{ copy }}" style="padding: 10px 16px; border-radius: 9px; font-size: 13px; font-weight: 600; background: #F3F3F0; color: #191A17;">{{ copyLabel }}</button>
+      <button class="btn" onClick="{{ exportPdf }}" style="padding: 10px 16px; border-radius: 9px; font-size: 13px; font-weight: 600; background: #2F9E5C; color: #FFFFFF;">{{ exportLabel }}</button>
+    </div>
+  </div>
+
+  <div style="height: 1px; background: #E5E4DF;"></div>
+
+  <!-- Title -->
+  <div>
+    <div style="font-size: 13px; color: #7C7F77; margin-bottom: 6px;">Riverflat A · Kōwhai Downs · 26 Sep 2026</div>
+    <div style="font-size: 30px; font-weight: 700; letter-spacing: -0.01em;">What to plant this season</div>
+  </div>
+
+  <!-- Hero recommendation -->
+  <div style="background: #F3F3F0; border-radius: 18px; padding: 30px 32px; display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #7C7F77;">Best fit</span>
+      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.02em; background: #E1F2E7; color: #11621A; padding: 3px 8px; border-radius: 6px;">GMO available</span>
+    </div>
+    <div style="font-size: 38px; font-weight: 700; color: #191A17;">Maize grain</div>
+    <div style="font-size: 15px; color: #50534C; max-width: 560px;">Best margin and yield for this paddock. A non-GMO variety is available at a small yield trade-off.</div>
+  </div>
+
+  <!-- Key numbers -->
+  <div style="display: flex; border-top: 1px solid #E5E4DF; border-bottom: 1px solid #E5E4DF; padding: 22px 0;">
+    <sc-for list="{{ stats }}" as="stat" hint-placeholder-count="3">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; border-left: 1px solid #E5E4DF; padding-left: 22px;">
+        <span class="mono" style="font-size: 25px; font-weight: 600;">{{ stat.value }}</span>
+        <span style="font-size: 12px; color: #7C7F77;">{{ stat.label }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- Why -->
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <div style="font-size: 14px; font-weight: 700;">Why this recommendation</div>
+    <sc-for list="{{ reasons }}" as="reason" hint-placeholder-count="3">
+      <div style="display: flex; gap: 10px; align-items: flex-start;">
+        <span style="width: 5px; height: 5px; border-radius: 999px; background: #2F9E5C; margin-top: 8px; flex-shrink: 0;"></span>
+        <span style="font-size: 14px; color: #191A17; line-height: 1.5;">{{ reason }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="font-size: 11px; color: #A0A099;">Prepared by PlantPal from soil, weather and paddock data. An estimate, not a guarantee — check current prices before committing.</div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":816,"height":1056}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { copied: false, exporting: false };
+  }
+
+  copy() {
+    this.setState({ copied: true });
+    setTimeout(() => this.setState({ copied: false }), 1400);
+  }
+  exportPdf() {
+    this.setState({ exporting: true });
+    setTimeout(() => this.setState({ exporting: false }), 1400);
+  }
+
+  renderVals() {
+    return {
+      stats: [
+        { value: '$1,180', label: 'Margin per ha' },
+        { value: '13.2 t', label: 'Expected yield per ha' },
+        { value: '$1,640', label: 'Cost to plant per ha' },
+      ],
+      reasons: [
+        'Soil and slope suit maize better than any other grain or vegetable option here.',
+        'Ten-season rainfall history covers this crop’s water need in 8 years out of 10.',
+        'A non-GMO variety is available if preferred, at a lower yield.',
+      ],
+      copyLabel: this.state.copied ? 'Copied' : 'Copy text',
+      exportLabel: this.state.exporting ? 'Preparing…' : 'Export as PDF',
+      copy: () => this.copy(),
+      exportPdf: () => this.exportPdf(),
+    };
+  }
+}
+</script>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#262824">
+  <title>PlantPal — Crop Advisor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=20260927-1">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="icon-rail" aria-label="Application navigation">
+      <a class="brand-mark" href="#" aria-label="PlantPal home">P</a>
+      <nav class="rail-nav">
+        <button class="rail-button active" data-rail-tab="Overview" aria-label="Dashboard overview" title="Dashboard overview">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg>
+        </button>
+        <button class="rail-button" data-rail-tab="Scenario planner" aria-label="Scenario planner" title="Scenario planner">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10m4 0h2M4 17h3m4 0h9M14 4v6M7 14v6"/></svg>
+        </button>
+        <button class="rail-button" data-rail-tab="Report" aria-label="Report builder" title="Report builder">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8m-8 4h8"/></svg>
+        </button>
+      </nav>
+      <button id="themeToggle" class="rail-button theme-button" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>
+      </button>
+    </aside>
+
+    <aside class="paddock-sidebar">
+      <header class="farm-header">
+        <span class="eyebrow">Season 2026/27</span>
+        <h1 id="farmName">Kōwhai Downs</h1>
+        <p id="locationLabel">41.35°S, 173.05°E</p>
+      </header>
+      <label class="search-box">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <span class="sr-only">Search paddocks</span>
+        <input id="paddockSearch" type="search" placeholder="Search paddocks" autocomplete="off">
+      </label>
+      <div class="list-heading"><span>Paddocks</span><span id="paddockCount">4</span></div>
+      <nav id="paddockList" class="paddock-list" aria-label="Choose a paddock"></nav>
+      <div class="sidebar-foot"><span class="status-dot"></span>Data updated 24 Sep 2026</div>
+    </aside>
+
+    <main class="main-stage">
+      <header class="stage-header">
+        <div class="title-row">
+          <div><div class="mobile-brand">PlantPal</div><h2 id="fieldName">Riverflat A</h2><p id="fieldMeta">24.6 ha · silt loam · well drained</p></div>
+          <button id="exportButton" class="primary-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 19h14"/></svg><span>Build report</span>
+          </button>
+        </div>
+        <nav id="tabs" class="tabs" aria-label="Paddock information"></nav>
+      </header>
+      <section id="content" class="content" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div id="summaryModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="summary-sheet" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
+      <div class="summary-toolbar no-print">
+        <div class="summary-brand"><span>P</span> PlantPal <em>Summary</em></div>
+        <div class="summary-actions">
+          <button id="copySummary" class="secondary-button">Copy text</button>
+          <button id="printSummary" class="primary-button">Export as PDF</button>
+          <button class="close-button" data-close-modal aria-label="Close summary">×</button>
+        </div>
+      </div>
+      <div id="printArea" class="print-area"></div>
+    </section>
+  </div>
+  <script type="module" src="js/app.js?v=20260927-5"></script>
+</body>
+</html>

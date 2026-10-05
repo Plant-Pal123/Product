@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Python (backend/ has its own .gitignore for backend-specific paths)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.env
+
+# Node (for the frontend, once scaffolded)
+node_modules/
+dist/
+build/
+
+# Generated artifacts
+*.log
