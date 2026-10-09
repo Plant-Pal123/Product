@@ -242,6 +242,35 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--brand); out
 .soil-note > span { font-size: 15px; }
 .soil-note p { margin: 0; font-size: 10px; line-height: 1.4; }
 .soil-note strong { display: block; margin-bottom: 2px; }
+.soil-bar-head .soil-bar-unit { color: var(--muted); font-size: 9px; }
+.soil-editor { margin-top: 18px; border: 1px solid var(--line); box-shadow: 0 12px 34px rgba(32,38,29,.07); }
+.soil-editor-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+.soil-editor-head h3 { margin: 4px 0 3px; font-size: 20px; }
+.soil-editor-head p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.soil-editor-head .secondary-button { flex-shrink: 0; min-height: 44px; border: 1px solid var(--line); background: var(--panel); }
+.soil-editor-head .secondary-button:disabled { cursor: default; opacity: .55; }
+.soil-warning { margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-ink); font-size: 11px; line-height: 1.45; }
+.soil-warning strong { display: block; margin-bottom: 2px; font-size: 12px; }
+.soil-groups { display: grid; gap: 14px; margin-top: 18px; }
+.soil-group { min-width: 0; margin: 0; padding: 16px 18px 18px; border: 0; border-radius: 15px; background: color-mix(in srgb, var(--card) 72%, var(--panel)); }
+.soil-group legend { float: left; width: 100%; margin-bottom: 12px; padding: 0; font-size: 14px; font-weight: 700; }
+.soil-fields { clear: both; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 16px; }
+.soil-field { min-width: 0; }
+.soil-field label { display: block; margin-bottom: 6px; color: var(--ink-2); font-size: 11px; font-weight: 600; }
+.soil-input-row { display: flex; align-items: center; gap: 8px; }
+.soil-input-row input, .soil-input-row select { flex: 1; min-width: 0; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink); font-family: inherit; font-size: 13px; }
+.soil-unit { flex-shrink: 0; max-width: 45%; color: var(--muted); font-size: 10px; line-height: 1.25; }
+.soil-field-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.soil-field-meta small { color: var(--muted); font-size: 9px; }
+.soil-badge { padding: 3px 8px; border-radius: 999px; background: var(--brand-2); color: var(--good-ink); font-size: 9px; font-weight: 700; }
+.soil-badge.is-low, .soil-badge.is-high { background: var(--warn-bg); color: var(--warn-ink); }
+.soil-field-meta small.is-missing, .soil-group-actions small.is-missing { color: var(--warn-ink); font-weight: 600; }
+.soil-group-actions { clear: both; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.soil-group-actions .secondary-button { min-height: 44px; border: 1px solid var(--line); background: var(--panel); }
+.soil-group-actions .secondary-button:disabled { cursor: progress; opacity: .7; }
+.soil-group-actions small { color: var(--muted); font-size: 11px; }
+.soil-credit { margin: 14px 0 0; color: var(--muted); font-size: 10px; }
+.texture-donut.is-unknown { background: var(--card-2); }
 
 /* Financial dashboard */
 .finance-dashboard { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(285px, .7fr); gap: 18px; }
@@ -616,6 +645,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--brand); out
   .soil-kpis > div:nth-child(3) { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
   .soil-kpis > div:nth-child(4) { border-top: 1px solid var(--line); }
   .soil-bars { grid-template-columns: 1fr; }
+  .soil-editor-head { display: block; }
+  .soil-editor-head .secondary-button { width: 100%; margin-top: 14px; }
+  .soil-group-actions .secondary-button { width: 100%; }
+  .soil-group { padding: 14px; }
+  .soil-fields { grid-template-columns: 1fr; }
+  .soil-input-row input, .soil-input-row select { font-size: 16px; }
   .soil-side { display: block; }
   .plan-hero { display: block; }
   .plan-hero-metrics { min-width: 0; margin-top: 19px; }
@@ -668,4 +703,405 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--brand); out
 
 @media (max-width: 1100px) {
   .live-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------------------------------------
+   Phones and tablets (1024px and narrower). Nothing below applies on wider
+   screens, so the desktop layout is unchanged.
+   --------------------------------------------------------------------------- */
+
+/* Paddock sidebar becomes a slide-out menu opened by the header's menu button. */
+.menu-button, .sidebar-close { display: none; }
+@media (max-width: 1024px) {
+  .app-shell { grid-template-columns: 64px minmax(0, 1fr); }
+  .paddock-sidebar { position: fixed; top: 0; bottom: 0; left: 0; z-index: 60; width: min(320px, 86vw); height: auto; border-right: 1px solid var(--line); box-shadow: var(--shadow); transform: translateX(-100%); visibility: hidden; transition: transform .22s ease, visibility 0s linear .22s; }
+  .sidebar-open .paddock-sidebar { transform: none; visibility: visible; transition: transform .22s ease; }
+  .sidebar-open { overflow: hidden; }
+  .sidebar-backdrop { position: fixed; inset: 0; z-index: 55; background: rgba(15,17,14,.45); }
+  .farm-header { position: relative; padding-right: 66px; }
+  .sidebar-close { position: absolute; top: 18px; right: 14px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 10px; background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 22px; }
+  .search-box { height: 44px; }
+  .paddock-button { min-height: 48px; }
+  .title-row { align-items: center; gap: 14px; }
+  .title-row > div { flex: 1; min-width: 0; }
+  .menu-button { flex-shrink: 0; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); cursor: pointer; font: inherit; font-size: 14px; font-weight: 650; }
+  .menu-button svg { width: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+  #exportButton { flex-shrink: 0; min-height: 44px; }
+  .tab-button { min-height: 44px; }
+  /* Fade at the right edge while more tabs are hidden off-screen. */
+  .tabs.can-scroll-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+}
+@media (max-width: 760px) {
+  /* Undo the old horizontal paddock strip: the menu shows the full sidebar. */
+  .paddock-sidebar { position: fixed; width: min(320px, 86vw); height: auto; border-bottom: 0; border-right: 1px solid var(--line); }
+  .farm-header { display: block; }
+  .list-heading { display: flex; }
+  .sidebar-foot { display: block; }
+  .search-box { margin: 0 20px 22px; }
+  .paddock-list { flex-direction: column; overflow-x: visible; padding: 0 10px; }
+  .paddock-button { min-width: 0; border: 0; }
+  .menu-button { width: 44px; padding: 0; justify-content: center; }
+  .menu-button span { display: none; }
+  .rail-nav { gap: 18px; }
+}
+
+/* Main tabs on phones and tablets. */
+.compare-cards { display: none; }
+@media (max-width: 1024px) {
+  /* Climate: 7-day strip stacks above its note instead of three squeezed columns. */
+  .climate-forecast { display: block; }
+  .climate-forecast .forecast-list { margin: 17px 0; }
+  .forecast-range button, .month-axis button, .variant-toggle button, .risk-options button, .compare-chip, .margin-row { min-height: 44px; }
+  .forecast-range button { white-space: nowrap; }
+  .primary-button, .secondary-button { min-height: 44px; }
+  .scenario-field input[type="range"] { height: 44px; }
+  .plan-stage { grid-template-columns: 44px 96px minmax(0, 1fr) 82px; }
+  .plan-check { width: 44px; height: 44px; }
+  .brand-mark { width: 44px; height: 44px; }
+}
+@media (max-width: 760px) {
+  /* Climate: all forecast days visible, wrapping onto rows, no sideways scroll. */
+  .climate-forecast { overflow-x: visible; }
+  .forecast-list { min-width: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 8px; }
+  .plan-stage { grid-template-columns: 44px 1fr; }
+  /* Compare: one card per crop instead of a sideways-scrolling table. */
+  .compare-card .table-scroll { display: none; }
+  .compare-cards { display: grid; gap: 12px; padding: 14px; }
+  .compare-crop-card { padding: 4px 14px; border: 1px solid var(--line); border-radius: 14px; }
+  .compare-crop-card h4 { margin: 12px 0 6px; font-size: 16px; }
+  .compare-crop-card dl { margin: 0; }
+  .compare-crop-card dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 -14px; padding: 11px 14px; border-top: 1px solid var(--line); }
+  .compare-crop-card dt { color: var(--ink-2); }
+  .compare-crop-card dd { margin: 0; text-align: right; }
+  .compare-crop-card dd small { margin-left: 3px; color: var(--muted); font-family: "Figtree", sans-serif; }
+  .compare-crop-card .best-cell { background: var(--brand-2); color: var(--good-ink); font-weight: 700; }
+  .compare-crop-card .best-cell dt { color: var(--good-ink); }
+}
+
+/* Charts and tables on phones and tablets. */
+@media (max-width: 1024px) {
+  /* Compare table: drop the fixed minimum width so it fits the tablet card. */
+  .comparison-table.interactive { min-width: 0; }
+}
+@media (max-width: 760px) {
+  /* Developer tab's soil table: scroll inside its own box, not the page. */
+  .live-grid > * { min-width: 0; }
+  .live-soil-table { display: block; max-width: 100%; overflow-x: auto; }
+}
+
+/* Report builder and preview on phones and tablets. */
+@media (max-width: 1024px) {
+  .report-editor input[type="text"] { min-height: 44px; }
+  .report-check { min-height: 44px; }
+  .report-check input { width: 20px; height: 20px; }
+  .close-button { width: 44px; height: 44px; }
+}
+@media (max-width: 760px) {
+  .report-page { padding: 26px 20px; }
+  /* Lead-recommendation figures: each value with its label underneath, in
+     columns, instead of one row of six items running off the screen. */
+  .report-hero > div { display: grid; grid-template-rows: auto auto; grid-auto-flow: column; justify-content: start; gap: 2px 22px; }
+}
+
+/* Minimum text size: 14px on phones, 12px on tablets. Each selector below
+   repeats an existing rule with a smaller size (generated from this file). */
+@media (min-width: 761px) and (max-width: 1024px) {
+  .eyebrow,
+  .list-heading,
+  .top-tag,
+  .sidebar-foot,
+  .map-topbar,
+  .map-legend strong,
+  .map-legend span,
+  .field-selection small,
+  .health-pill,
+  .condition-grid span,
+  .condition-grid small,
+  .meter-label,
+  .forecast-now,
+  .forecast-day,
+  .forecast-note p,
+  .reference-map-top,
+  .reference-marker small,
+  .reference-disclaimer,
+  .image-quality,
+  .imagery-date strong,
+  .imagery-date small,
+  .snapshot-grid span,
+  .snapshot-grid small,
+  .attention-list h4,
+  .attention-list p strong,
+  .attention-list p span,
+  .attention-list b,
+  .imagery-note,
+  .forecast-range button,
+  .outlook-badge,
+  .climate-kpis span,
+  .climate-kpis small,
+  .chart-head span,
+  .chart-head small,
+  .chart-key,
+  .chart-scale,
+  .month-axis,
+  .weather-explainer p,
+  .weather-explainer dt,
+  .weather-explainer dd,
+  .soil-kpis span,
+  .soil-kpis small,
+  .soil-bar-head,
+  .soil-bar-row > small,
+  .texture-donut small,
+  .texture-legend > div,
+  .ph-scale > div:first-child,
+  .soil-note p,
+  .soil-bar-head .soil-bar-unit,
+  .soil-editor-head p,
+  .soil-warning,
+  .soil-field label,
+  .soil-unit,
+  .soil-field-meta small,
+  .soil-badge,
+  .soil-group-actions small,
+  .soil-credit,
+  .finance-kpis span,
+  .finance-kpis small,
+  .margin-name,
+  .margin-row > strong,
+  .cost-head p,
+  .cost-donut small,
+  .cost-legend > div,
+  .cost-legend strong,
+  .finance-note p,
+  .comparison-table.interactive td small,
+  .comparison-hint,
+  .pick-tag,
+  .gmo-badge,
+  .metric label,
+  .weather-bar span,
+  .plan-hero-metrics span,
+  .plan-hero-metrics small,
+  .plan-progress-head,
+  .plan-date span,
+  .plan-owner span,
+  .plan-date strong,
+  .plan-owner strong,
+  .plan-copy > span,
+  .plan-copy p,
+  .plan-sidebar li,
+  .plan-callout span,
+  .plan-callout p,
+  .risk-definition p,
+  .risk-definition strong,
+  .switch-row small,
+  .risk-method p,
+  .risk-method > div,
+  .scenario-tip strong,
+  .scenario-row small,
+  .scenario-margin small,
+  .editor-note,
+  .preview-label,
+  .report-page-head,
+  .report-logo,
+  .report-meta,
+  .report-hero > span,
+  .report-hero small,
+  .report-alternatives span,
+  .report-page footer,
+  .summary-kicker,
+  .summary-stat span,
+  .disclaimer,
+  .live-intro code,
+  .live-attribution,
+  .live-pill { font-size: 12px; }
+}
+@media (max-width: 760px) {
+  .eyebrow,
+  .farm-header p,
+  .search-box input,
+  .list-heading,
+  .paddock-meta,
+  .top-tag,
+  .sidebar-foot,
+  .primary-button,
+  .secondary-button,
+  .section-title p,
+  .map-topbar,
+  .map-legend strong,
+  .map-legend span,
+  .field-selection small,
+  .health-pill,
+  .condition-grid span,
+  .condition-grid small,
+  .meter-label,
+  .forecast-now,
+  .forecast-day,
+  .forecast-note p,
+  .reference-map-top,
+  .reference-marker strong,
+  .reference-marker small,
+  .reference-disclaimer,
+  .image-quality,
+  .imagery-date strong,
+  .imagery-date small,
+  .snapshot-grid span,
+  .snapshot-grid small,
+  .attention-list h4,
+  .attention-list p strong,
+  .attention-list p span,
+  .attention-list b,
+  .imagery-note,
+  .forecast-range button,
+  .outlook-badge,
+  .climate-kpis span,
+  .climate-kpis small,
+  .chart-head span,
+  .chart-head small,
+  .chart-key,
+  .chart-scale,
+  .month-axis,
+  .weather-explainer p,
+  .weather-explainer dt,
+  .weather-explainer dd,
+  .soil-kpis span,
+  .soil-kpis small,
+  .soil-bar-head,
+  .soil-bar-row > small,
+  .texture-donut small,
+  .texture-legend > div,
+  .ph-scale > div:first-child,
+  .soil-note p,
+  .soil-bar-head .soil-bar-unit,
+  .soil-editor-head p,
+  .soil-warning,
+  .soil-warning strong,
+  .soil-field label,
+  .soil-unit,
+  .soil-field-meta small,
+  .soil-badge,
+  .soil-group-actions small,
+  .soil-credit,
+  .finance-kpis span,
+  .finance-kpis small,
+  .margin-name,
+  .margin-row > strong,
+  .cost-head p,
+  .cost-donut small,
+  .cost-legend > div,
+  .cost-legend strong,
+  .finance-note p,
+  .compare-chip,
+  .comparison-table.interactive td small,
+  .comparison-hint,
+  .rank,
+  .pick-tag,
+  .gmo-badge,
+  .category,
+  .variant-toggle button,
+  .metric label,
+  .metric strong,
+  .data-list dt,
+  .data-list dd,
+  .bar-head,
+  .weather-bar span,
+  .plan-hero p,
+  .plan-hero-metrics span,
+  .plan-hero-metrics small,
+  .plan-progress-head,
+  .plan-date span,
+  .plan-owner span,
+  .plan-date strong,
+  .plan-owner strong,
+  .plan-copy > span,
+  .plan-copy h3,
+  .plan-copy p,
+  .plan-sidebar li,
+  .plan-callout span,
+  .plan-callout strong,
+  .plan-callout p,
+  .plan-list p,
+  .comparison-table,
+  .empty-state,
+  .scenario-field > span,
+  .risk-options button,
+  .risk-definition p,
+  .risk-definition strong,
+  .switch-row strong,
+  .switch-row small,
+  .risk-method strong,
+  .risk-method p,
+  .risk-method > div,
+  .scenario-tip strong,
+  .confidence-pill,
+  .scenario-rank,
+  .scenario-row strong,
+  .scenario-row small,
+  .scenario-score b,
+  .scenario-margin small,
+  .scenario-margin strong,
+  .report-editor label,
+  .report-editor input[type="text"],
+  .report-editor textarea,
+  .report-editor legend,
+  .editor-note,
+  .preview-label,
+  .report-page-head,
+  .report-logo,
+  .report-meta,
+  .report-byline,
+  .report-hero > span,
+  .report-hero p,
+  .report-hero small,
+  .report-section h3,
+  .report-section p,
+  .report-alternatives strong,
+  .report-alternatives span,
+  .report-page footer,
+  .summary-brand span,
+  .summary-brand em,
+  .summary-date,
+  .summary-kicker,
+  .summary-stat span,
+  .reasons li,
+  .disclaimer,
+  .mobile-brand,
+  .live-intro,
+  .live-intro code,
+  .live-note,
+  .live-banner,
+  .live-attribution,
+  .live-pill,
+  .live-refresh-list li,
+  .bullets { font-size: 14px; }
+}
+/* <small> labels without a size of their own (browsers shrink them to ~83%),
+   and the developer tab's checkbox labels, whose size is set inline. */
+@media (min-width: 761px) and (max-width: 1024px) {
+  small { font-size: 12px; }
+}
+@media (max-width: 760px) {
+  small { font-size: 14px; }
+  .live-actions label { font-size: 14px !important; }
+}
+
+/* Text labels under the rail icons on phones (bottom bar) and tablets (left bar). */
+.rail-label { display: none; }
+@media (max-width: 1024px) {
+  .rail-nav .rail-button { width: 60px; height: auto; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 0; }
+  .rail-label { display: block; font-size: 12px; font-weight: 600; line-height: 1.1; }
+}
+@media (max-width: 760px) {
+  .icon-rail { height: auto; padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); align-items: center; }
+  .rail-nav { gap: 6px; }
+  .rail-nav .rail-button { width: 76px; }
+  .rail-label { font-size: 14px; }
+  .main-stage { padding-bottom: 96px; }
+}
+
+/* Chart day/month labels on phones: the seasonal (12) and 14-day views wrap
+   onto two rows so each label is wide enough to read and tap. The column
+   count is set inline by the chart, hence !important. */
+@media (max-width: 760px) {
+  .month-axis[style*="repeat(12"], .month-axis[style*="repeat(14"] { padding-left: 0; row-gap: 4px; }
+  .month-axis[style*="repeat(12"] { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+  .month-axis[style*="repeat(14"] { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
 }

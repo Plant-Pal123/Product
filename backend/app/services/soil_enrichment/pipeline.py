@@ -1,4 +1,4 @@
-"""Orchestrates: locate a plot -> query LRIS FSL layers -> normalize -> store.
+"""Orchestrates: locate a plot -> query LRIS FSL and S-map layers -> normalize -> store.
 
 Kept deliberately thin and adapter-agnostic per the spec ("keep source-specific
 adapters separate from common normalization and storage code") - swapping in
@@ -18,8 +18,13 @@ from app.core.config import Settings, get_settings
 from app.db.models import Plot, SoilObservation
 from app.services.soil_enrichment.crs import LonLat, geojson_centroid_lonlat
 from app.services.soil_enrichment.lris_client import LrisClient, LrisConfigError, LrisRequestError
-from app.services.soil_enrichment.normalize import NormalizedObservation, normalize_fsl_feature
-from app.services.soil_enrichment.specs import FSL_PROPERTIES, SOURCE_NAME, FslPropertySpec
+from app.services.soil_enrichment.normalize import NormalizedObservation, normalize_fsl_feature, normalize_smap_feature
+from app.services.soil_enrichment.specs import FSL_PROPERTIES, SMAP_PROPERTIES, SOURCE_NAME, FslPropertySpec, SmapPropertySpec
+
+# Each layer paired with the adapter that normalizes its features. S-map use
+# is pending a licence decision - see specs.py / backend/README.md.
+FSL_LAYERS = [(spec, normalize_fsl_feature) for spec in FSL_PROPERTIES]
+SMAP_LAYERS = [(spec, normalize_smap_feature) for spec in SMAP_PROPERTIES]
 
 logger = logging.getLogger("soil_enrichment.pipeline")
 
@@ -38,7 +43,7 @@ class IngestionSummary:
     results: list[PropertyIngestResult]
 
 
-def _existing_observation(db: Session, plot_id: int, spec: FslPropertySpec) -> SoilObservation | None:
+def _existing_observation(db: Session, plot_id: int, spec: FslPropertySpec | SmapPropertySpec) -> SoilObservation | None:
     """Looks up the row `_upsert` would touch for this property, matching the
     same columns as `uq_soil_observations_identity` in sql/schema.sql."""
     return (
@@ -79,12 +84,13 @@ def refresh_soil_observations(
     force: bool = False,
     dry_run: bool = False,
 ) -> IngestionSummary:
-    """Fetches (or reuses fresh cached) FSL soil properties for `plot`'s
+    """Fetches (or reuses fresh cached) FSL (plus S-map when SMAP_ENABLED) soil properties for `plot`'s
     centroid and upserts them. Never raises on a per-property source error -
     that property is recorded with quality_flag="missing" and the error is
     logged, so one bad response doesn't block the rest."""
     settings = settings or get_settings()
     location = geojson_centroid_lonlat(plot.boundary)
+    layers = FSL_LAYERS + (SMAP_LAYERS if settings.smap_enabled else [])
 
     results: list[PropertyIngestResult] = []
     with LrisClient(
@@ -93,7 +99,7 @@ def refresh_soil_observations(
         timeout_seconds=settings.lris_request_timeout_seconds,
         max_retries=settings.lris_max_retries,
     ) as client:
-        for i, spec in enumerate(FSL_PROPERTIES):
+        for i, (spec, normalize) in enumerate(layers):
             existing = _existing_observation(db, plot.id, spec)
             if not force and existing is not None and _is_fresh(existing, settings.soil_observation_ttl_hours):
                 results.append(PropertyIngestResult(spec.property_code, "skipped_fresh"))
@@ -105,7 +111,7 @@ def refresh_soil_observations(
             try:
                 features = client.query_point(spec.layer_id, location.lon, location.lat)
                 feature = features[0] if features else None
-                obs = normalize_fsl_feature(plot.id, spec, feature, geometry_method="centroid")
+                obs = normalize(plot.id, spec, feature, geometry_method="centroid")
             except LrisConfigError as exc:
                 logger.warning("soil_enrichment plot=%s property=%s config error", plot.id, spec.property_code)
                 results.append(PropertyIngestResult(spec.property_code, "error", str(exc)))

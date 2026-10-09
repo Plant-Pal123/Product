@@ -1,6 +1,8 @@
 import { liveBackendView, setActivePlotId } from './live.js';
 import { fetchLiveForecast } from './weather.js';
-import { createPlan, getPlan, getSoilProperties, recommend } from './api.js?v=20260927-2';
+import { createPlan, getPlan, getSoilProperties, recommend, refreshSoilProperties } from './api.js?v=20260927-2';
+import { SMAP_ENABLED } from './config.js?v=20261009-1';
+import { SOIL_DEPTH_CM_ESTIMATES, SOIL_GROUPS, SOIL_PROFILES, SOIL_SAMPLE_MAX_AGE_YEARS, SOIL_THRESHOLDS, TEXTURE_COMPOSITION } from './data/mockData.js';
 
 const paddocks = [
   {
@@ -85,6 +87,8 @@ const state = {
   },
   forecastDayIndex: 0,
   planDone: [],
+  soilEdits: {}, // soil field overrides keyed by paddock id (or paddock:zone); cleared by "Reset to defaults"
+  smapFetch: {}, // per paddock: { status: 'loading' | 'done' | 'partial' | 'error', text }
 };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -142,7 +146,7 @@ function renderPaddocks() {
   $('#paddockCount').textContent = matches.length;
   $('#paddockList').innerHTML = matches.length ? matches.map((p) => `
     <button class="paddock-button ${p.id === state.paddockId ? 'active' : ''}" data-paddock="${p.id}" aria-current="${p.id === state.paddockId ? 'true' : 'false'}">
-      <span><span class="paddock-name">${p.name}</span><span class="paddock-meta">${p.area.toFixed(1)} ha · ${p.soil}</span></span>
+      <span><span class="paddock-name">${p.name}</span><span class="paddock-meta">${p.area.toFixed(1)} ha · ${esc(soilValues(p).texture)}</span></span>
     </button>`).join('') : '<div class="empty-state">No paddocks found</div>';
 }
 
@@ -151,6 +155,38 @@ function renderTabs() {
   document.querySelectorAll('[data-rail-tab]').forEach((button) => {
     button.classList.toggle('active', button.dataset.railTab === state.tab);
   });
+  revealActiveTab();
+}
+
+// On narrow screens the tab bar scrolls sideways: keep the active tab in view
+// and fade the right edge while more tabs are hidden. No-op when every tab fits.
+function revealActiveTab() {
+  const bar = $('#tabs');
+  const active = bar.querySelector('.active');
+  if (active && bar.scrollWidth > bar.clientWidth) {
+    const barBox = bar.getBoundingClientRect();
+    const box = active.getBoundingClientRect();
+    if (box.right > barBox.right) bar.scrollLeft += box.right - barBox.right + 48;
+    else if (box.left < barBox.left) bar.scrollLeft -= barBox.left - box.left + 24;
+  }
+  updateTabsFade();
+}
+
+function updateTabsFade() {
+  const bar = $('#tabs');
+  bar.classList.toggle('can-scroll-right', bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 1);
+}
+
+// Phones and tablets: the paddock sidebar is a slide-out menu (the CSS only
+// turns it into one at 1024px and narrower).
+const sidebarIsOpen = () => document.body.classList.contains('sidebar-open');
+function setSidebarOpen(open) {
+  if (open === sidebarIsOpen()) return;
+  document.body.classList.toggle('sidebar-open', open);
+  $('#menuButton').setAttribute('aria-expanded', String(open));
+  $('.sidebar-backdrop').hidden = !open;
+  if (open) ($('#paddockList .paddock-button.active') ?? $('#paddockSearch')).focus();
+  else $('#menuButton').focus();
 }
 
 function cropCard(crop, index) {
@@ -180,24 +216,141 @@ function liveSoilValue(p, propertyCode) {
   return p.liveSoil?.soil_properties.find((prop) => prop.property === propertyCode) ?? null;
 }
 
+// Soil values for a paddock (or, once zones exist, one of its zones):
+// placeholder defaults from mockData, then live LRIS readings where the
+// backend has them, then zone-specific values, then the user's edits.
+const SOIL_FIELDS = Object.fromEntries(SOIL_GROUPS.flatMap((group) => group.fields).map((f) => [f.key, f]));
+const soilEditKey = (p, zoneId = null) => (zoneId ? `${p.id}:${zoneId}` : p.id);
+// Soil fields the backend can fill. S-map layers publish a class name
+// (value_text, e.g. "Silty"); the FSL ones a number (value).
+const LIVE_SOIL_FIELDS = {
+  ph: { code: 'ph' },
+  organic: { code: 'organic_carbon' },
+  cec: { code: 'cec' },
+  paw: { code: 'available_water_capacity' },
+  rootingDepth: { code: 'potential_rooting_depth' },
+  texture: { code: 'smap_texture', text: true },
+  drainage: { code: 'smap_drainage', text: true },
+  depthClass: { code: 'smap_depth_class', text: true },
+};
+const SMAP_CREDIT_PREFIX = 'Soil data: S-map';
+
+// { field: { value, source, estimate? } } for live values, or
+// { field: { missing: true, source } } where the source has no data there
+// (e.g. a town, or outside S-map's coverage).
+function liveSoilFields(p) {
+  const live = {};
+  Object.entries(LIVE_SOIL_FIELDS).forEach(([key, { code, text }]) => {
+    const reading = liveSoilValue(p, code);
+    if (!reading) return;
+    const source = reading.source_dataset?.startsWith('S-map') ? 'S-map' : 'FSL';
+    const value = text ? reading.value_text : reading.value;
+    if (value == null) { live[key] = { missing: true, source }; return; }
+    // LRIS reports rooting depth in metres; the field is in cm.
+    live[key] = { value: key === 'rootingDepth' ? Math.round(value * 100) : value, source };
+  });
+  // No FSL rooting depth: fall back to the rough cm figure for S-map's depth
+  // class. Shown as an estimate only - never sent to the backend.
+  const estimate = SOIL_DEPTH_CM_ESTIMATES[live.depthClass?.value];
+  if (live.rootingDepth?.value == null && estimate) live.rootingDepth = { value: estimate, source: 'S-map', estimate: true };
+  return live;
+}
+
+function soilBaseValues(p, zoneId = null) {
+  const profile = SOIL_PROFILES[p.id] ?? { defaults: {}, zones: [] };
+  const zone = profile.zones.find((z) => z.id === zoneId);
+  const live = Object.fromEntries(Object.entries(liveSoilFields(p)).filter(([, reading]) => !reading.missing).map(([key, reading]) => [key, reading.value]));
+  return { ...profile.defaults, ...live, ...zone?.values };
+}
+
+function soilValues(p, zoneId = null) {
+  return { ...soilBaseValues(p, zoneId), ...state.soilEdits[soilEditKey(p, zoneId)] };
+}
+
+function soilRange(key, value) {
+  const t = SOIL_THRESHOLDS[key];
+  if (!t || !Number.isFinite(value)) return null;
+  const level = value < t.lo ? 'low' : value > t.hi ? 'high' : 'ok';
+  return { level, text: t.labels[level] };
+}
+
+function soilSampleIsOld(dateText) {
+  const sampled = new Date(dateText);
+  if (Number.isNaN(sampled.getTime())) return false;
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - SOIL_SAMPLE_MAX_AGE_YEARS);
+  return sampled < cutoff;
+}
+
+function formatSampleDate(dateText) {
+  const [year, month, day] = String(dateText).split('-').map(Number);
+  if (!year || !month || !day) return esc(dateText);
+  return `${day} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]} ${year}`;
+}
+
+function soilFieldInput(f, value) {
+  const attrs = `id="soil-${f.key}" data-soil-field="${f.key}"`;
+  if (f.type === 'select') {
+    const options = value && !f.options.includes(value) ? [value, ...f.options] : f.options;
+    return `<select ${attrs}>${options.map((option) => `<option value="${esc(option)}" ${option === value ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select>`;
+  }
+  if (f.type === 'number') return `<input type="number" inputmode="decimal" step="${f.step}" value="${esc(value ?? '')}" ${attrs}>`;
+  return `<input type="${f.type}" value="${esc(value ?? '')}" ${attrs}>`;
+}
+
+// Small note under a field: "Edited", where a live value came from, or that
+// the source has no data at this paddock.
+function soilFieldNote(key, edits, live) {
+  if (key in edits) return { text: 'Edited' };
+  const reading = live[key];
+  if (!reading) return null;
+  if (reading.missing) return { text: `No ${reading.source} data – enter manually`, missing: true };
+  return { text: reading.estimate ? 'Estimate from S-map depth class' : reading.source };
+}
+
+function soilFieldMarkup(f, soil, edits, live) {
+  const range = soilRange(f.key, soil[f.key]);
+  const note = soilFieldNote(f.key, edits, live);
+  return `<div class="soil-field">
+    <label for="soil-${f.key}">${f.label}</label>
+    <div class="soil-input-row">${soilFieldInput(f, soil[f.key])}${f.unit ? `<span class="soil-unit">${esc(f.unit)}</span>` : ''}</div>
+    ${range || note ? `<div class="soil-field-meta">${range ? `<span class="soil-badge is-${range.level}">${range.text}</span>` : ''}${note ? `<small class="${note.missing ? 'is-missing' : ''}">${esc(note.text)}</small>` : ''}</div>` : ''}
+  </div>`;
+}
+
+// "Get S-map data" button, its status message and the S-map credit line,
+// shown inside the Physical soil group. None of it shows while S-map is off.
+function smapControls(p) {
+  if (!SMAP_ENABLED) return { head: '', credit: '' };
+  const fetchState = state.smapFetch[p.id] ?? {};
+  const loading = fetchState.status === 'loading';
+  const credit = p.liveSoil?.attribution.find((text) => text.startsWith(SMAP_CREDIT_PREFIX));
+  return {
+    head: `<div class="soil-group-actions"><button type="button" class="secondary-button" data-smap-fetch ${loading ? 'disabled' : ''}>${loading ? 'Fetching S-map data…' : 'Get S-map data'}</button>${fetchState.text ? `<small class="${fetchState.status === 'error' || fetchState.status === 'partial' ? 'is-missing' : ''}" role="status">${esc(fetchState.text)}</small>` : ''}</div>`,
+    credit: credit ? `<p class="soil-credit">${esc(credit)}</p>` : '',
+  };
+}
+
 function soilView(p) {
   const livePh = liveSoilValue(p, 'ph');
   const liveOrganic = liveSoilValue(p, 'organic_carbon');
   const liveCec = liveSoilValue(p, 'cec');
-  const livePaw = liveSoilValue(p, 'available_water_capacity');
-  const liveRooting = liveSoilValue(p, 'potential_rooting_depth');
   const livePret = liveSoilValue(p, 'phosphate_retention');
 
-  const ph = livePh?.value ?? p.ph;
-  const organic = liveOrganic?.value ?? p.organic;
-  const cec = liveCec?.value ?? (10 + p.organic * 2.2);
+  const soil = soilValues(p);
+  const edits = state.soilEdits[soilEditKey(p)] ?? {};
+  const live = liveSoilFields(p);
+  const { ph, organic, cec } = soil;
+  const phTarget = SOIL_THRESHOLDS.ph;
 
-  const nutrients = [['Nitrogen', p.nitrogen, 100], ['Phosphorus', p.phosphorus, 50], ['Potassium', p.potassium, 250]];
-  const textures = {
-    'silt loam': [20, 65, 15], 'sandy loam': [58, 30, 12], loam: [42, 40, 18], 'clay loam': [30, 34, 36],
-  };
-  const [sand, silt, clay] = textures[p.soil] || [40, 40, 20];
+  const nutrients = ['nitrogen', 'phosphorus', 'potassium'].map((key) => ({ ...SOIL_FIELDS[key], value: soil[key], range: SOIL_THRESHOLDS[key] }));
+  // Peaty soils have no sand/silt/clay split, so the donut goes neutral.
+  const composition = TEXTURE_COMPOSITION[soil.texture];
+  const [sand, silt, clay] = composition ?? [0, 0, 0];
+  const pct = (value) => (composition ? `${value}%` : '—');
+  const smap = smapControls(p);
   const phPosition = Math.max(0, Math.min(100, (ph - 4.5) / 3.5 * 100));
+  const sampleIsOld = soilSampleIsOld(soil.sampleDate);
 
   const sourceBanner = p.liveSoil
     ? (p.liveSoil.soil_properties.length
@@ -205,37 +358,42 @@ function soilView(p) {
       : `<p class="live-note">No LRIS soil data stored yet for this paddock - showing demo values. Run the backend's soil refresh (Live backend tab) or <code>scripts/ingest_soil_data.py</code>.</p>`)
     : (p.liveSoilFailed ? `<p class="live-note">Couldn't reach the backend - showing demo values. See backend/README.md.</p>` : '');
 
+  // Profile available water and rooting depth are now editable fields in the
+  // "Physical soil" group below, which shows their LRIS source.
   const extraKpis = [
-    livePaw ? `<div><span>Profile available water</span><strong class="mono">${livePaw.value}${livePaw.unit ? ` ${esc(livePaw.unit)}` : ''}</strong><small>${esc(livePaw.source)}</small></div>` : '',
-    liveRooting ? `<div><span>Potential rooting depth</span><strong class="mono">${liveRooting.value}${liveRooting.unit ? ` ${esc(liveRooting.unit)}` : ''}</strong><small>${esc(liveRooting.source)}</small></div>` : '',
     livePret ? `<div><span>Phosphate retention</span><strong class="mono">${livePret.value}${livePret.unit ? ` ${esc(livePret.unit)}` : ''}</strong><small>${esc(livePret.source)}</small></div>` : '',
   ].filter(Boolean).join('');
 
-  return `<div class="section-title"><h3>Soil health</h3><p>${p.liveSoil?.soil_properties.length ? 'LRIS Portal (Landcare Research) soil data' : 'Composite field sample · collected 18 Sep 2026'}</p></div>
+  return `<div class="section-title"><h3>Soil health</h3><p>${p.liveSoil?.soil_properties.length ? 'LRIS Portal (Landcare Research) soil data' : `Composite field sample · collected ${formatSampleDate(soil.sampleDate)}`}</p></div>
     ${sourceBanner}
     <div class="soil-dashboard">
       <article class="soil-main info-card">
         <div class="soil-title"><div><span class="eyebrow">${livePh ? 'Source-attributed reading' : 'Latest laboratory results'}</span><h3>${p.name} soil profile</h3></div><span class="outlook-badge">Balanced</span></div>
         <div class="soil-kpis">
-          <div><span>pH level</span><strong class="mono">${ph.toFixed(1)}</strong><small>${phStatus(ph)} · target 6.0–7.0</small></div>
-          <div><span>Organic matter</span><strong class="mono">${organic.toFixed(1)}%</strong><small>${liveOrganic ? esc(liveOrganic.source) : 'Good carbon level'}</small></div>
-          <div><span>CEC</span><strong class="mono">${cec.toFixed(1)}</strong><small>cmol(+)/kg${liveCec ? '' : ' · estimated'}</small></div>
-          <div><span>Sample depth</span><strong class="mono">0–15 cm</strong><small>Composite cores</small></div>
+          <div><span>pH level</span><strong class="mono">${ph.toFixed(1)}</strong><small>${phStatus(ph)} · target ${phTarget.lo.toFixed(1)}–${phTarget.hi.toFixed(1)}</small></div>
+          <div><span>Organic matter</span><strong class="mono">${organic.toFixed(1)}%</strong><small>${liveOrganic && !('organic' in edits) ? esc(liveOrganic.source) : 'Good carbon level'}</small></div>
+          <div><span>CEC</span><strong class="mono">${cec.toFixed(1)}</strong><small>${SOIL_FIELDS.cec.unit}${liveCec || 'cec' in edits ? '' : ' · estimated'}</small></div>
+          <div><span>Sample depth</span><strong class="mono">${esc(soil.sampleDepth)}</strong><small>Composite cores</small></div>
         </div>
         ${extraKpis ? `<div class="soil-kpis" style="margin-top:8px">${extraKpis}</div>` : ''}
         <div class="nutrient-panel">
           <div class="chart-head"><div><h3>Nutrient availability</h3><span>${p.liveSoil ? 'Demo estimate - LRIS FSL does not publish N/P/K levels' : 'Current level against agronomic range'}</span></div><strong>mg/kg <small>unless noted</small></strong></div>
-          <div class="soil-bars">${nutrients.map(([label, value, max]) => { const pct = Math.min(100, value / max * 100); return `<div class="soil-bar-row"><div class="soil-bar-head"><span>${label}</span><strong class="mono">${value}</strong></div><div class="soil-bar-track"><span class="target-band"></span><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div><small>${pct < 45 ? 'Below target' : pct > 88 ? 'Above target' : 'Within working range'}</small></div>`; }).join('')}</div>
+          <div class="soil-bars">${nutrients.map(({ key, label, unit, value, range }) => { const pct = Math.max(0, Math.min(100, value / range.max * 100)); const band = `left:${range.lo / range.max * 100}%; width:${(range.hi - range.lo) / range.max * 100}%`; return `<div class="soil-bar-row"><div class="soil-bar-head"><span>${label} <small class="soil-bar-unit">(${esc(unit)})</small></span><strong class="mono">${value}</strong></div><div class="soil-bar-track"><span class="target-band" style="${band}"></span><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div><small>${soilRange(key, value)?.text ?? ''}</small></div>`; }).join('')}</div>
         </div>
       </article>
       <aside class="soil-side info-card">
-        <div class="cost-head"><span class="eyebrow">Soil composition</span><h3>${p.soil}</h3><p>Estimated texture from the latest composite sample.</p></div>
-        <div class="texture-donut-wrap"><div class="texture-donut" style="--sand:${sand}%; --silt:${sand + silt}%"><span><strong class="mono">${organic.toFixed(1)}%</strong><small>Organic matter</small></span></div></div>
-        <div class="texture-legend"><div><span><i class="sand"></i>Sand</span><strong class="mono">${sand}%</strong></div><div><span><i class="silt"></i>Silt</span><strong class="mono">${silt}%</strong></div><div><span><i class="clay"></i>Clay</span><strong class="mono">${clay}%</strong></div></div>
+        <div class="cost-head"><span class="eyebrow">Soil composition</span><h3>${esc(soil.texture)}</h3><p>${composition ? `Typical sand/silt/clay split for ${esc(soil.texture.toLowerCase())} soils (estimate).` : 'Mostly organic matter - no sand/silt/clay split.'}</p></div>
+        <div class="texture-donut-wrap"><div class="texture-donut ${composition ? '' : 'is-unknown'}" style="--sand:${sand}%; --silt:${sand + silt}%"><span><strong class="mono">${organic.toFixed(1)}%</strong><small>Organic matter</small></span></div></div>
+        <div class="texture-legend"><div><span><i class="sand"></i>Sand</span><strong class="mono">${pct(sand)}</strong></div><div><span><i class="silt"></i>Silt</span><strong class="mono">${pct(silt)}</strong></div><div><span><i class="clay"></i>Clay</span><strong class="mono">${pct(clay)}</strong></div></div>
         <div class="ph-scale"><div><span>Acidic</span><strong>pH balance</strong><span>Alkaline</span></div><div class="ph-track"><i style="left:${phPosition}%"></i></div></div>
         <div class="soil-note"><span>✓</span><p><strong>Good planting condition</strong>${ph < 6.1 ? 'A light lime application may improve nutrient availability.' : 'No major pH correction is indicated before planting.'}</p></div>
       </aside>
-    </div>`;
+    </div>
+    <section class="soil-editor info-card" aria-labelledby="soilEditorTitle">
+      <div class="soil-editor-head"><div><span class="eyebrow">Soil data</span><h3 id="soilEditorTitle">Edit soil values</h3><p>Placeholder values until the backend supplies them. Edits stay until the page is refreshed.</p></div><button type="button" class="secondary-button" data-soil-reset ${Object.keys(edits).length ? '' : 'disabled'}>Reset to defaults</button></div>
+      ${sampleIsOld ? `<div class="soil-warning" role="status"><strong>Data is over ${SOIL_SAMPLE_MAX_AGE_YEARS} years old</strong>Sampled ${formatSampleDate(soil.sampleDate)} - consider a new soil test before relying on these values.</div>` : ''}
+      <div class="soil-groups">${SOIL_GROUPS.map((group) => `<fieldset class="soil-group"><legend>${group.title}</legend>${group.id === 'physical' ? smap.head : ''}<div class="soil-fields">${group.fields.map((f) => soilFieldMarkup(f, soil, edits, live)).join('')}</div>${group.id === 'physical' ? smap.credit : ''}</fieldset>`).join('')}</div>
+    </section>`;
 }
 
 function climateView(p) {
@@ -339,8 +497,26 @@ function compareView(p) {
       <tr><td>Expected yield</td>${selected.map((crop) => `<td class="mono">${displayCrop(crop).yield}<small>/ha</small></td>`).join('')}</tr>
       <tr><td>Growing cost</td>${selected.map((crop) => `<td class="mono">${money(displayCrop(crop).cost)}<small>/ha</small></td>`).join('')}</tr>
       <tr><td>Category</td>${selected.map((crop) => `<td>${crop.category}</td>`).join('')}</tr>
-    </tbody></table></div><p class="comparison-hint"><span>●</span> Highlighted values lead the current selection.</p></article>`}
+    </tbody></table></div>${compareCards(selected)}<p class="comparison-hint"><span>●</span> Highlighted values lead the current selection.</p></article>`}
   `;
+}
+
+// Phone version of the comparison table: one card per crop (CSS shows these
+// instead of the table at 760px and narrower).
+function compareCards(selected) {
+  const topScore = Math.max(...selected.map((crop) => crop.score));
+  const topMargin = Math.max(...selected.map((crop) => Number(displayCrop(crop).margin) || 0));
+  return `<div class="compare-cards">${selected.map((crop) => {
+    const x = displayCrop(crop);
+    const rows = [
+      ['Overall fit', `${crop.score}<small>/100</small>`, crop.score === topScore],
+      ['Expected margin', `${money(x.margin)}<small>/ha</small>`, x.margin === topMargin],
+      ['Expected yield', `${x.yield}<small>/ha</small>`, false],
+      ['Growing cost', `${money(x.cost)}<small>/ha</small>`, false],
+      ['Category', crop.category, false],
+    ];
+    return `<section class="compare-crop-card"><h4><span class="crop-dot dot-${crop.id}"></span>${x.name}</h4><dl>${rows.map(([label, value, best]) => `<div class="${best ? 'best-cell' : ''}"><dt>${label}</dt><dd class="${label === 'Category' ? '' : 'mono'}">${value}</dd></div>`).join('')}</dl></section>`;
+  }).join('')}</div>`;
 }
 
 function scenarioView(p) {
@@ -390,7 +566,7 @@ function renderPlanSectionBody(p) {
 
 function reportPageMarkup(p) {
   const top = displayCrop(p.crops[0]);
-  return `<div class="report-page-head"><div><span class="report-logo">P</span><strong>PlantPal</strong></div><span>Advisor report · 26 Sep 2026</span></div><div class="report-meta">${p.name} · ${esc(p.region)} · ${p.area.toFixed(1)} ha</div><h1 data-report-preview="title">${esc(state.report.title)}</h1><p class="report-byline">Prepared by <span data-report-preview="preparedBy">${esc(state.report.preparedBy)}</span></p><section class="report-hero"><span>Lead recommendation</span><h2>${top.name}</h2><p data-report-preview="summary">${esc(state.report.summary)}</p><div><strong class="mono">${money(top.margin)}</strong><small>margin / ha</small><strong class="mono">${top.yield}</strong><small>yield / ha</small><strong class="mono">${p.crops[0].score}</strong><small>fit score</small></div></section><section class="report-section" data-report-section="alternatives" ${state.report.includeAlternatives ? '' : 'hidden'}><h3>Alternative options</h3><div class="report-alternatives">${p.crops.slice(1, 4).map((crop) => `<div><strong>${displayCrop(crop).name}</strong><span class="mono">${crop.score}/100 · ${money(displayCrop(crop).margin)}/ha</span></div>`).join('')}</div></section><section class="report-columns"><div data-report-section="soil" ${state.report.includeSoil ? '' : 'hidden'}><h3>Soil summary</h3><p>pH ${p.ph.toFixed(1)} (${phStatus(p.ph).toLowerCase()}), ${p.organic.toFixed(1)}% organic matter and ${p.soil} texture.</p></div><div data-report-section="climate" ${state.report.includeClimate ? '' : 'hidden'}><h3>Climate summary</h3><p>Near-normal rainfall and a warmer spring indicate a favourable establishment window.</p></div></section><section class="report-section" data-report-section="plan" ${state.report.includePlan ? '' : 'hidden'}><h3>Season plan</h3>${renderPlanSectionBody(p)}</section><section class="report-section" data-report-section="aisummary" ${state.report.includeAiSummary ? '' : 'hidden'}><h3>AI-generated summary</h3>${renderAiSummaryBody(p)}</section><footer>Decision-support estimate only. Confirm contracts, prices and field conditions before planting.</footer>`;
+  return `<div class="report-page-head"><div><span class="report-logo">P</span><strong>PlantPal</strong></div><span>Advisor report · 26 Sep 2026</span></div><div class="report-meta">${p.name} · ${esc(p.region)} · ${p.area.toFixed(1)} ha</div><h1 data-report-preview="title">${esc(state.report.title)}</h1><p class="report-byline">Prepared by <span data-report-preview="preparedBy">${esc(state.report.preparedBy)}</span></p><section class="report-hero"><span>Lead recommendation</span><h2>${top.name}</h2><p data-report-preview="summary">${esc(state.report.summary)}</p><div><strong class="mono">${money(top.margin)}</strong><small>margin / ha</small><strong class="mono">${top.yield}</strong><small>yield / ha</small><strong class="mono">${p.crops[0].score}</strong><small>fit score</small></div></section><section class="report-section" data-report-section="alternatives" ${state.report.includeAlternatives ? '' : 'hidden'}><h3>Alternative options</h3><div class="report-alternatives">${p.crops.slice(1, 4).map((crop) => `<div><strong>${displayCrop(crop).name}</strong><span class="mono">${crop.score}/100 · ${money(displayCrop(crop).margin)}/ha</span></div>`).join('')}</div></section><section class="report-columns"><div data-report-section="soil" ${state.report.includeSoil ? '' : 'hidden'}><h3>Soil summary</h3><p>${reportSoilSummary(p)}</p></div><div data-report-section="climate" ${state.report.includeClimate ? '' : 'hidden'}><h3>Climate summary</h3><p>Near-normal rainfall and a warmer spring indicate a favourable establishment window.</p></div></section><section class="report-section" data-report-section="plan" ${state.report.includePlan ? '' : 'hidden'}><h3>Season plan</h3>${renderPlanSectionBody(p)}</section><section class="report-section" data-report-section="aisummary" ${state.report.includeAiSummary ? '' : 'hidden'}><h3>AI-generated summary</h3>${renderAiSummaryBody(p)}</section><footer>Decision-support estimate only. Confirm contracts, prices and field conditions before planting.</footer>`;
 }
 
 function reportView(p) {
@@ -421,10 +597,48 @@ function renderContent() {
   $('#content').innerHTML = views[state.tab](field());
 }
 
+// Same values the Soil tab shows (placeholders, live S-map/FSL data and edits).
+function reportSoilSummary(p) {
+  const soil = soilValues(p);
+  return `pH ${soil.ph.toFixed(1)} (${phStatus(soil.ph).toLowerCase()}), ${soil.organic.toFixed(1)}% organic matter and ${esc(soil.texture.toLowerCase())} texture.`;
+}
+
+// Sidebar list and paddock header both show the paddock's soil texture, so
+// refresh them whenever soil values change.
+function renderSoilLabels() {
+  const p = field();
+  $('#fieldMeta').textContent = `${p.area.toFixed(1)} ha · ${soilValues(p).texture} · sampled 18 Sep 2026`;
+  renderPaddocks();
+}
+
+// Asks our backend to fetch S-map + FSL soil data for the paddock's saved
+// location (the LRIS key lives only on the backend), then reloads it.
+async function fetchSmapForPaddock(p) {
+  state.smapFetch[p.id] = { status: 'loading' };
+  if (state.paddockId === p.id && state.tab === 'Soil') renderContent();
+  try {
+    const { results } = await refreshSoilProperties(p.plotId);
+    p.liveSoil = await getSoilProperties(p.plotId);
+    p.liveSoilFailed = false;
+    const smapErrors = results.filter((r) => r.property_code.startsWith('smap_') && r.status === 'error');
+    // The backend reports a missing key per property with lris_client.py's
+    // "LRIS_API_KEY is not set" message rather than failing the request.
+    if (smapErrors.some((r) => r.detail?.startsWith('LRIS_API_KEY is not set'))) state.smapFetch[p.id] = { status: 'error', text: 'S-map key not set up on the server.' };
+    else if (smapErrors.length === 3) state.smapFetch[p.id] = { status: 'error', text: `Couldn't get S-map data: ${smapErrors[0].detail ?? 'source request failed'}` };
+    else if (smapErrors.length) state.smapFetch[p.id] = { status: 'partial', text: 'Some S-map layers couldn\'t be fetched - try again shortly.' };
+    else state.smapFetch[p.id] = { status: 'done', text: 'Updated from S-map and FSL.' };
+  } catch (err) {
+    console.error('S-map fetch failed:', err);
+    state.smapFetch[p.id] = { status: 'error', text: `Couldn't reach the backend (${err.message}).` };
+  }
+  if (state.paddockId === p.id) renderSoilLabels();
+  if (state.paddockId === p.id && state.tab === 'Soil') renderContent();
+}
+
 function render() {
   const p = field();
   $('#fieldName').textContent = p.name;
-  $('#fieldMeta').textContent = `${p.area.toFixed(1)} ha · ${p.soil} · sampled 18 Sep 2026`;
+  $('#fieldMeta').textContent = `${p.area.toFixed(1)} ha · ${soilValues(p).texture} · sampled 18 Sep 2026`;
   $('#farmName').textContent = p.region;
   const latitude = `${Math.abs(p.location.lat).toFixed(2)}°${p.location.lat < 0 ? 'S' : 'N'}`;
   const longitude = `${Math.abs(p.location.lon).toFixed(2)}°${p.location.lon < 0 ? 'W' : 'E'}`;
@@ -451,7 +665,9 @@ document.addEventListener('click', (event) => {
   const forecastRange = event.target.closest('[data-forecast-range]');
   const forecastDay = event.target.closest('[data-forecast-day]');
   const planStep = event.target.closest('[data-plan-step]');
-  if (paddock) { state.paddockId = paddock.dataset.paddock; state.tab = state.paddockTabs[state.paddockId] || 'Overview'; render(); }
+  if (paddock) { state.paddockId = paddock.dataset.paddock; state.tab = state.paddockTabs[state.paddockId] || 'Overview'; render(); setSidebarOpen(false); }
+  if (event.target.closest('#menuButton')) setSidebarOpen(!sidebarIsOpen());
+  if (event.target.closest('[data-close-sidebar]')) setSidebarOpen(false);
   if (tab) { setTab(tab.dataset.tab); renderTabs(); renderContent(); }
   if (railTab) { setTab(railTab.dataset.railTab); renderTabs(); renderContent(); }
   if (compareCrop) {
@@ -469,6 +685,8 @@ document.addEventListener('click', (event) => {
   }
   const scenarioRisk = event.target.closest('[data-scenario-risk]');
   if (scenarioRisk) { state.scenario.risk = scenarioRisk.dataset.scenarioRisk; renderContent(); }
+  if (event.target.closest('[data-soil-reset]')) { delete state.soilEdits[state.paddockId]; renderSoilLabels(); renderContent(); }
+  if (event.target.closest('[data-smap-fetch]')) fetchSmapForPaddock(field());
   if (event.target.closest('#generateAiSummaryBtn')) generateAiSummary();
   if (event.target.closest('[data-add-plan-to-report]')) {
     state.report.includePlan = true;
@@ -505,6 +723,24 @@ document.addEventListener('input', (event) => {
   }
 });
 document.addEventListener('change', (event) => {
+  if (event.target.matches('[data-soil-field]')) {
+    const p = field();
+    const key = event.target.dataset.soilField;
+    const raw = event.target.value.trim();
+    const value = SOIL_FIELDS[key].type === 'number' ? Number(raw) : raw;
+    const edits = state.soilEdits[soilEditKey(p)] ??= {};
+    // Clearing a field, or typing the default back in, drops the override.
+    if (raw === '' || (SOIL_FIELDS[key].type === 'number' && !Number.isFinite(value)) || value === soilBaseValues(p)[key]) delete edits[key];
+    else edits[key] = value;
+    // Re-render after the browser has moved focus (e.g. on Tab), then put
+    // focus back on whichever soil field the user is now in.
+    setTimeout(() => {
+      const focusedId = document.activeElement?.id;
+      renderSoilLabels();
+      renderContent();
+      if (focusedId) document.getElementById(focusedId)?.focus();
+    }, 0);
+  }
   if (event.target.matches('[data-scenario-budget]')) renderContent();
   if (event.target.matches('[data-scenario-irrigation]')) {
     state.scenario.irrigation = event.target.checked;
@@ -535,7 +771,15 @@ $('#copySummary').addEventListener('click', async (event) => {
   btn.textContent = 'Copied';
   setTimeout(() => { btn.textContent = 'Copy text'; }, 1400);
 });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('#summaryModal').hidden) closeSummary(); });
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!$('#summaryModal').hidden) closeSummary();
+  else setSidebarOpen(false);
+});
+$('#tabs').addEventListener('scroll', updateTabsFade, { passive: true });
+window.addEventListener('resize', updateTabsFade);
+// Widening past the tablet layout closes the menu (the sidebar is always shown there).
+window.matchMedia('(min-width: 1025px)').addEventListener('change', (event) => { if (event.matches) setSidebarOpen(false); });
 
 // Each paddock is its own real place (see the `location`/`region` fields in
 // the `paddocks` array above) - weather follows whichever paddock is
@@ -566,6 +810,7 @@ async function loadLiveSoilForPaddock(p) {
     console.warn(`Live soil data unavailable for ${p.name}, keeping demo values:`, err.message); // eslint-disable-line no-console
     return;
   }
+  renderSoilLabels();
   if (state.paddockId === p.id && state.tab === 'Soil') renderContent();
 }
 

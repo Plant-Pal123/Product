@@ -14,6 +14,12 @@ normalisation/re-expression this pipeline does, and No-Commercial needs a
 call on whether PlantPal counts as commercial use, so they are deliberately
 NOT wired up here. See the completion report for that open decision.
 
+Exception, PENDING THAT SAME LICENCE DECISION: S-map's categorical drainage,
+texture and depth layers (SMAP_PROPERTIES below) are wired up but only
+fetched when SMAP_ENABLED is true (off by default). Their values are stored exactly as
+published - never normalised or turned into numbers - see
+normalize_smap_feature.
+
 Each FSL layer shares one schema shape: `{PREFIX}_MIN/MAX/MID/MOD` (a range
 plus Landcare's chosen "modal"/representative value), `{PREFIX}_CLASS` (the
 categorical class the numeric range was binned from) and `{PREFIX}_EST`
@@ -111,3 +117,58 @@ FSL_PROPERTIES: list[FslPropertySpec] = [
 ]
 
 FSL_PROPERTIES_BY_CODE = {spec.property_code: spec for spec in FSL_PROPERTIES}
+
+
+# --- S-map (categorical layers) ---------------------------------------------
+# Verified against https://lris.scinfo.org.nz/services/api/v1.x/layers/<id>/
+# on 2026-10-08: each layer has GEOMETRY plus one string field. Live values
+# seen: Drainage "Well drained" / "Moderately well drained" / "Imperfectly
+# drained" / "Poorly drained"; Texture "Loamy" / "Silty"; SibDepth "Deep" /
+# "Moderately Deep" / "Shallow".
+# LICENCE: CC BY-NC-ND 4.0 - use is pending a team decision (backend/README.md).
+
+SMAP_LICENSE_NAME = "CC BY-NC-ND 4.0"
+SMAP_LICENSE_URL = "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+SMAP_ATTRIBUTION_TEXT = "Soil data: S-map © Manaaki Whenua – Landcare Research (CC BY-NC-ND)"
+SMAP_SOURCE_VINTAGE = "S-map August 2026"
+
+
+@dataclass(frozen=True)
+class SmapPropertySpec:
+    property_code: str
+    layer_id: int
+    field_name: str  # the layer's single value field
+    source_dataset: str
+    description: str
+    # Same attribute names as FslPropertySpec so the shared lookup/upsert code
+    # treats both alike. S-map classes have no unit or stated depth interval.
+    unit: str | None = None
+    depth_top_cm: float | None = None
+    depth_bottom_cm: float | None = None
+
+
+SMAP_PROPERTIES: list[SmapPropertySpec] = [
+    SmapPropertySpec(
+        property_code="smap_drainage",
+        layer_id=125063,
+        field_name="Drainage",
+        source_dataset="S-map Soil Drainage August 2026",
+        description="Soil drainage class, as published by S-map.",
+    ),
+    SmapPropertySpec(
+        property_code="smap_texture",
+        layer_id=125064,
+        field_name="Texture",
+        source_dataset="S-map Soil Texture August 2026",
+        description="Soil texture group (e.g. Loamy, Silty), as published by S-map.",
+    ),
+    SmapPropertySpec(
+        property_code="smap_depth_class",
+        layer_id=125062,
+        field_name="SibDepth",
+        source_dataset="S-map Soil Depth August 2026",
+        description="Soil depth class (e.g. Deep, Shallow), as published by S-map. A class, not a measurement.",
+    ),
+]
+
+SMAP_PROPERTY_CODES = {spec.property_code for spec in SMAP_PROPERTIES}

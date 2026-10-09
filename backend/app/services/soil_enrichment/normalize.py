@@ -16,10 +16,12 @@ from app.services.soil_enrichment.specs import (
     ATTRIBUTION_TEXT,
     LICENSE_NAME,
     LICENSE_URL,
+    SMAP_SOURCE_VINTAGE,
     SOURCE_NAME,
     SOURCE_VINTAGE,
     SPATIAL_RESOLUTION_M,
     FslPropertySpec,
+    SmapPropertySpec,
 )
 
 
@@ -47,7 +49,12 @@ class NormalizedObservation:
     raw_properties_json: dict[str, Any]
 
 
-def _missing_observation(plot_id: int, spec: FslPropertySpec, geometry_method: str) -> NormalizedObservation:
+def _missing_observation(
+    plot_id: int,
+    spec: FslPropertySpec | SmapPropertySpec,
+    geometry_method: str,
+    vintage: str = SOURCE_VINTAGE,
+) -> NormalizedObservation:
     return NormalizedObservation(
         plot_id=plot_id,
         property_code=spec.property_code,
@@ -63,7 +70,7 @@ def _missing_observation(plot_id: int, spec: FslPropertySpec, geometry_method: s
         source_dataset=spec.source_dataset,
         source_record_id=None,
         source_url=f"https://lris.scinfo.org.nz/layer/{spec.layer_id}/",
-        source_version_or_vintage=SOURCE_VINTAGE,
+        source_version_or_vintage=vintage,
         spatial_resolution_m=SPATIAL_RESOLUTION_M,
         geometry_method=geometry_method,
         quality_flag="missing",
@@ -152,9 +159,52 @@ def normalize_fsl_feature(
     )
 
 
+def normalize_smap_feature(
+    plot_id: int,
+    spec: SmapPropertySpec,
+    feature: LrisFeature | None,
+    geometry_method: str,
+) -> NormalizedObservation:
+    """S-map layers publish one categorical field each (e.g. Drainage =
+    "Poorly drained"). The value is stored verbatim in value_text and never
+    mapped to a number - both because the spec forbids presenting classes as
+    measurements and because S-map's CC BY-NC-ND licence forbids derivatives.
+    No polygon at the point, or a blank value, is recorded as missing."""
+    value = feature.properties.get(spec.field_name) if feature is not None else None
+    if isinstance(value, str):
+        value = value.strip()
+    if not value:
+        return _missing_observation(plot_id, spec, geometry_method, vintage=SMAP_SOURCE_VINTAGE)
+
+    return NormalizedObservation(
+        plot_id=plot_id,
+        property_code=spec.property_code,
+        value_numeric=None,
+        value_text=str(value),
+        unit=spec.unit,
+        depth_top_cm=spec.depth_top_cm,
+        depth_bottom_cm=spec.depth_bottom_cm,
+        observation_date=None,  # S-map has no per-feature survey date; vintage carries this instead
+        retrieved_at=datetime.now(timezone.utc),
+        provenance_type="mapped",
+        source_name=SOURCE_NAME,
+        source_dataset=spec.source_dataset,
+        source_record_id=feature.source_record_id,
+        source_url=f"https://lris.scinfo.org.nz/layer/{spec.layer_id}/",
+        source_version_or_vintage=SMAP_SOURCE_VINTAGE,
+        spatial_resolution_m=SPATIAL_RESOLUTION_M,
+        geometry_method=geometry_method,
+        # A soil-map class, not a measurement - same label as every FSL value.
+        quality_flag="estimated",
+        uncertainty=None,
+        raw_properties_json=feature.properties,
+    )
+
+
 __all__ = [
     "NormalizedObservation",
     "normalize_fsl_feature",
+    "normalize_smap_feature",
     "ATTRIBUTION_TEXT",
     "LICENSE_NAME",
     "LICENSE_URL",

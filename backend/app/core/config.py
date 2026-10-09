@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # properties per plot) - LRIS doesn't publish an explicit rate limit for
     # this API, but there's no reason to hammer it either.
     lris_request_pacing_seconds: float = 0.3
+    # S-map layers (drainage/texture/depth class) are CC BY-NC-ND and pending a
+    # licence decision (see backend/README.md), so they're off unless
+    # SMAP_ENABLED=true. FSL properties are fetched either way.
+    smap_enabled: bool = False
     # How long a stored soil observation is considered fresh before refresh_soil_data
     # will re-query the source for it (FSL/S-map layers are republished a few times
     # a year at most, so this defaults high).

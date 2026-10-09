@@ -4,6 +4,8 @@ pipeline's DB-facing behaviour (upsert idempotency, missing-key handling)."""
 
 from datetime import datetime, timezone
 
+import pytest
+
 from app.core.config import get_settings
 from app.db.models import SoilObservation
 from app.db.session import SessionLocal
@@ -18,6 +20,19 @@ def _settings_without_lris_key():
     test_satellite_properties.py for why this matters."""
     settings = get_settings()
     return settings.model_copy(update={"lris_api_key": None})
+
+
+def _settings_with_smap(enabled):
+    """S-map is off by default (SMAP_ENABLED); these force it either way,
+    regardless of the developer's own .env."""
+    return get_settings().model_copy(update={"lris_api_key": None, "smap_enabled": enabled})
+
+
+@pytest.fixture
+def smap_on():
+    app.dependency_overrides[get_settings] = lambda: _settings_with_smap(True)
+    yield
+    del app.dependency_overrides[get_settings]
 
 
 def test_soil_properties_empty_before_any_ingestion(client, test_plot):
@@ -69,6 +84,99 @@ def test_soil_properties_reflects_stored_observations(client, test_plot):
     assert prop["provenance"] == "mapped"
     assert prop["quality"] == "valid"
     assert body["attribution"] == ["Data reproduced with the permission of Landcare Research New Zealand Limited"]
+
+
+def _add_observation(plot_id, property_code, source_dataset, value_numeric=None, value_text=None):
+    db = SessionLocal()
+    try:
+        db.add(
+            SoilObservation(
+                plot_id=plot_id,
+                property_code=property_code,
+                value_numeric=value_numeric,
+                value_text=value_text,
+                unit=None,
+                depth_top_cm=None,
+                depth_bottom_cm=None,
+                observation_date=None,
+                retrieved_at=datetime.now(timezone.utc),
+                provenance_type="mapped",
+                source_name=SOURCE_NAME,
+                source_dataset=source_dataset,
+                source_record_id=None,
+                source_url="https://lris.scinfo.org.nz/",
+                source_version_or_vintage=None,
+                spatial_resolution_m=None,
+                geometry_method="centroid",
+                quality_flag="estimated" if value_text or value_numeric is not None else "missing",
+                uncertainty=None,
+                raw_properties_json={},
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_soil_properties_credits_smap_when_smap_values_are_shown(client, test_plot, smap_on):
+    _add_observation(test_plot, "available_water_capacity", "FSL Profile Available Water", value_numeric=120)
+    _add_observation(test_plot, "smap_drainage", "S-map Soil Drainage August 2026", value_text="Poorly drained")
+
+    body = client.get(f"/api/v1/plots/{test_plot}/soil-properties").json()
+    drainage = next(p for p in body["soil_properties"] if p["property"] == "smap_drainage")
+    assert drainage["value_text"] == "Poorly drained"
+    assert drainage["value"] is None
+    assert body["attribution"] == [
+        "Data reproduced with the permission of Landcare Research New Zealand Limited",
+        "Soil data: S-map © Manaaki Whenua – Landcare Research (CC BY-NC-ND)",
+    ]
+
+
+def test_soil_properties_no_smap_credit_when_smap_has_no_data(client, test_plot, smap_on):
+    _add_observation(test_plot, "smap_drainage", "S-map Soil Drainage August 2026")
+
+    body = client.get(f"/api/v1/plots/{test_plot}/soil-properties").json()
+    assert body["attribution"] == []
+
+
+def test_soil_properties_hides_smap_values_when_smap_disabled(client, test_plot):
+    _add_observation(test_plot, "available_water_capacity", "FSL Profile Available Water", value_numeric=120)
+    _add_observation(test_plot, "smap_drainage", "S-map Soil Drainage August 2026", value_text="Poorly drained")
+    app.dependency_overrides[get_settings] = lambda: _settings_with_smap(False)
+    try:
+        body = client.get(f"/api/v1/plots/{test_plot}/soil-properties").json()
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert [p["property"] for p in body["soil_properties"]] == ["available_water_capacity"]
+    assert body["attribution"] == [
+        "Data reproduced with the permission of Landcare Research New Zealand Limited",
+    ]
+
+
+def test_refresh_skips_smap_layers_when_smap_disabled(test_plot):
+    from app.db.models import Plot
+
+    db = SessionLocal()
+    try:
+        plot = db.get(Plot, test_plot)
+        summary = refresh_soil_observations(db, plot, settings=_settings_with_smap(False), dry_run=True)
+    finally:
+        db.close()
+    codes = {r.property_code for r in summary.results}
+    assert codes and not codes & {"smap_drainage", "smap_texture", "smap_depth_class"}
+
+
+def test_refresh_includes_smap_layers_when_smap_enabled(test_plot):
+    from app.db.models import Plot
+
+    db = SessionLocal()
+    try:
+        plot = db.get(Plot, test_plot)
+        summary = refresh_soil_observations(db, plot, settings=_settings_with_smap(True), dry_run=True)
+    finally:
+        db.close()
+    codes = {r.property_code for r in summary.results}
+    assert {"smap_drainage", "smap_texture", "smap_depth_class"} <= codes
 
 
 def test_soil_properties_missing_plot_404s(client):

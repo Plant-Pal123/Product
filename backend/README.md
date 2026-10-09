@@ -47,6 +47,28 @@ repository, https://lris.scinfo.org.nz/) and stores them in `soil_observations`
 alongside the existing `soil_readings` table. It does not touch `soil_readings` or
 the ML pipeline - it is additive.
 
+> **⚠️ S-map use is PENDING A LICENCE DECISION, so it is off by default.**
+> `SMAP_ENABLED=true` in `backend/.env` (and `SMAP_ENABLED = true` in
+> `frontend/js/config.js` for the "Get S-map data" button) adds three S-map
+> layers - Soil Drainage (125063), Soil Texture (125064) and Soil Depth
+> (125062) - to the soil refresh, as `smap_drainage`,
+> `smap_texture` and `smap_depth_class`. S-map is licensed **CC BY-NC-ND 4.0**:
+> - **NC (non-commercial):** someone must decide whether PlantPal counts as
+>   commercial use. If it does, a commercial licence from Manaaki Whenua –
+>   Landcare Research is needed before S-map can be used.
+> - **ND (no derivatives):** S-map values are stored and shown exactly as
+>   published (e.g. "Poorly drained", "Silty", "Deep") and are never
+>   converted to numbers by the backend. The frontend shows a rough cm figure
+>   per depth class only when FSL has no rooting depth, labelled "estimate";
+>   it is never stored.
+> - The credit line "Soil data: S-map © Manaaki Whenua – Landcare Research
+>   (CC BY-NC-ND)" is returned in `attribution` whenever an S-map value exists.
+>
+> **Do not set `SMAP_ENABLED=true` in a deployment until the licence decision
+> is made.** While it's false the backend neither fetches nor returns S-map
+> values (even ones stored earlier) and the frontend hides the button; FSL
+> data works as before.
+
 ### Source, why it was chosen, and its limits
 
 - **Adapter used:** the **Fundamental Soil Layers (FSL)**, a national-coverage
@@ -178,8 +200,10 @@ with actual farmland (like the Turakirae point above) returns real data.
 - The Vector Query API's response shape (`lris_client._extract_features`)
   matched Koordinates' documented platform format on the first real request -
   no changes needed there.
-- S-map (the current, higher-resolution source) is not integrated - see
-  above.
+- S-map (the current, higher-resolution source) is only integrated for its
+  categorical drainage/texture/depth layers, and only on the smap-integration
+  branch pending the licence decision above. Its per-property numeric layers
+  (pH etc.) are still not integrated.
 - No scheduled job wires up `refresh_soil_observations` yet; run
   `scripts/ingest_soil_data.py` manually or hook it into whatever scheduler
   design.md §3 eventually settles on for weather/satellite refresh.

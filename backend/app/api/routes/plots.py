@@ -19,6 +19,7 @@ from app.schemas.weather import WeatherHistoryOut, WeatherReadingOut, WeatherRef
 from app.services.ingestion import get_latest_plot_data
 from app.services.satellite_enrichment.pipeline import refresh_satellite_readings
 from app.services.soil_enrichment.normalize import ATTRIBUTION_TEXT
+from app.services.soil_enrichment.specs import SMAP_ATTRIBUTION_TEXT, SMAP_PROPERTY_CODES
 from app.services.soil_enrichment.pipeline import refresh_soil_observations
 from app.services.weather_enrichment.pipeline import refresh_weather_readings
 
@@ -84,7 +85,7 @@ def get_plot_data(plot_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{plot_id}/soil-properties", response_model=SoilPropertiesOut)
-def get_soil_properties(plot_id: int, db: Session = Depends(get_db)):
+def get_soil_properties(plot_id: int, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     """Reads whatever soil_observations are already stored - never makes a
     live call to the source (see POST .../soil-properties/refresh for that),
     so this always responds even if the source is down (FR: stale/error
@@ -96,10 +97,20 @@ def get_soil_properties(plot_id: int, db: Session = Depends(get_db)):
         .order_by(SoilObservation.property_code)
         .all()
     )
+    # With S-map off, rows stored while it was on aren't shown either.
+    if not settings.smap_enabled:
+        observations = [o for o in observations if o.property_code not in SMAP_PROPERTY_CODES]
+    # Each source gets its own credit line: FSL whenever FSL rows exist (as
+    # before), S-map only when an S-map value is actually being shown.
+    attribution = []
+    if any(o.property_code not in SMAP_PROPERTY_CODES for o in observations):
+        attribution.append(ATTRIBUTION_TEXT)
+    if any(o.property_code in SMAP_PROPERTY_CODES and o.value_text for o in observations):
+        attribution.append(SMAP_ATTRIBUTION_TEXT)
     return SoilPropertiesOut(
         plot_id=plot.id,
         soil_properties=[_observation_to_schema(o) for o in observations],
-        attribution=[ATTRIBUTION_TEXT] if observations else [],
+        attribution=attribution,
     )
 
 
